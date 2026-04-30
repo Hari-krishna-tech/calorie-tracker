@@ -51,17 +51,23 @@ export default function HistoryPage() {
     setWeights(weightsData);
     setGoal(settingsData.dailyCalorieGoal);
 
-    // Fetch entries for last 7 days
-    const summaries: DaySummary[] = [];
+    // Fetch all 7 days at once via batch endpoint
+    const dates: string[] = [];
     for (let i = 0; i <= 7; i++) {
-      const d = addDays(today, -i);
-      const entries = await fetchJSON<FoodEntry[]>(`/api/entries?date=${d}`);
+      dates.push(addDays(today, -i));
+    }
+    const grouped = await fetchJSON<Record<string, FoodEntry[]>>(
+      `/api/entries/batch?dates=${dates.join(",")}`
+    );
+
+    const summaries: DaySummary[] = dates.map((d) => {
+      const entries = grouped[d] || [];
       const calories = entries.reduce(
         (s, e) => s + e.food.caloriesPerUnit * e.quantity,
         0
       );
-      summaries.push({ date: d, calories, goal: settingsData.dailyCalorieGoal });
-    }
+      return { date: d, calories, goal: settingsData.dailyCalorieGoal };
+    });
     setDaySummaries(summaries.reverse());
     setLoading(false);
   }, []);

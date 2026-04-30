@@ -200,28 +200,38 @@ async function main() {
   const prisma = await createPrisma();
   console.log("Seeding database...");
 
-  // Upsert foods
+  // Upsert foods (name no longer unique, check first)
   for (const food of foods) {
-    await prisma.food.upsert({
-      where: { name: food.name },
-      update: {},
-      create: {
-        name: food.name,
-        category: food.category,
-        region: food.region,
-        caloriesPerUnit: food.caloriesPerUnit,
-        unitName: food.unitName,
-        servingSizes: JSON.stringify(food.servingSizes),
-        isCommon: ["breakfast", "rice", "bread", "dal", "curry", "fruit"].includes(food.category),
-      },
-    });
+    const existing = await prisma.food.findFirst({ where: { name: food.name, userId: null } });
+    if (!existing) {
+      await prisma.food.create({
+        data: {
+          name: food.name,
+          category: food.category,
+          region: food.region,
+          caloriesPerUnit: food.caloriesPerUnit,
+          unitName: food.unitName,
+          servingSizes: JSON.stringify(food.servingSizes),
+          isCommon: ["breakfast", "rice", "bread", "dal", "curry", "fruit"].includes(food.category),
+        },
+      });
+    }
   }
 
-  // Create default settings if not exists
-  await prisma.settings.upsert({
-    where: { id: "default" },
+  // Create default settings if not exists (seed user for legacy)
+  const seedUser = await prisma.user.upsert({
+    where: { googleId: "seed" },
     update: {},
-    create: { id: "default", dailyCalorieGoal: 2000 },
+    create: {
+      googleId: "seed",
+      email: "seed@example.com",
+      name: "Seed User",
+    },
+  });
+  await prisma.settings.upsert({
+    where: { id: seedUser.id },
+    update: {},
+    create: { id: seedUser.id, userId: seedUser.id, dailyCalorieGoal: 2000 },
   });
 
   console.log(`Seeded ${foods.length} foods.`);

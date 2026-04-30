@@ -26,3 +26,19 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Quick-add scrollable on desktop */
+.quick-add-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+.quick-add-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.quick-add-scroll::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+.quick-add-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}

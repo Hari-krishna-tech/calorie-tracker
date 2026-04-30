@@ -7,37 +7,65 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String
+  googleId  String    @unique
+  avatarUrl String?
+  createdAt DateTime  @default(now())
+  foodEntries  FoodEntry[]
+  settings     Settings[]
+  weightEntries WeightEntry[]
+  customFoods  Food[]       @relation("CustomFoods")
+}
+
 model Food {
   id              String      @id @default(cuid())
-  name            String      @unique
-  category        String      // breakfast, curry, rice, bread, snack, drink, fruit, etc.
-  region          String      // south_indian, north_indian, general
+  name            String
+  category        String
+  region          String
   caloriesPerUnit Float
-  unitName        String      // "piece", "bowl", "cup", "serving", etc.
-  servingSizes    String      // JSON string: [{"label":"1 piece","multiplier":1},...]
+  unitName        String
+  servingSizes    String
   isCommon        Boolean     @default(false)
+  userId          String?
+  createdBy       User?       @relation("CustomFoods", fields: [userId], references: [id])
   createdAt       DateTime    @default(now())
   entries         FoodEntry[]
+
+  @@index([name])
+  @@index([userId])
 }
 
 model FoodEntry {
   id        String   @id @default(cuid())
   foodId    String
   food      Food     @relation(fields: [foodId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
   quantity  Float
-  mealType  String   // breakfast, lunch, dinner, snack
-  date      String   // "YYYY-MM-DD"
+  mealType  String
+  date      String
   createdAt DateTime @default(now())
+
+  @@index([userId, date])
 }
 
 model Settings {
-  id               String @id @default("default")
+  id               String @id @default(cuid())
+  userId           String @unique
+  user             User   @relation(fields: [userId], references: [id])
   dailyCalorieGoal Int    @default(2000)
 }
 
 model WeightEntry {
   id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
   weight    Float
-  date      String   @unique
+  date      String
   createdAt DateTime @default(now())
+
+  @@unique([userId, date])
 }

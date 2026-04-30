@@ -156,7 +156,15 @@ export default function AddPage() {
           )}
 
           {query && results.length === 0 && (
-            <div className="text-center text-gray-400 py-8">No foods found</div>
+            <div className="text-center text-gray-400 py-4">No foods found</div>
+          )}
+
+          {/* Custom food creation */}
+          {query && (
+            <CustomFoodForm
+              presetName={query}
+              onCreated={(food: Food) => { selectFood(food); setReady(true); }}
+            />
           )}
         </>
       ) : (
@@ -278,6 +286,97 @@ export default function AddPage() {
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+function CustomFoodForm({
+  presetName,
+  onCreated,
+}: {
+  presetName: string;
+  onCreated: (food: Food) => void;
+}) {
+  const [show, setShow] = useState(false);
+  const [name, setName] = useState("");
+  const [calories, setCalories] = useState("");
+  const [unit, setUnit] = useState("serving");
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    setName(presetName);
+  }, [presetName]);
+
+  const create = async () => {
+    if (!name || !calories) return;
+    setCreating(true);
+    const food = await fetchJSON<Food>("/api/foods", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        caloriesPerUnit: parseFloat(calories),
+        unitName: unit,
+        category: "custom",
+      }),
+    });
+    setCreating(false);
+    onCreated(food);
+  };
+
+  if (!show) {
+    return (
+      <button
+        onClick={() => setShow(true)}
+        className="w-full text-left bg-gray-50 rounded-xl px-4 py-3 text-primary font-medium text-sm active:bg-gray-100 transition-colors mt-2"
+      >
+        + Create &ldquo;{presetName}&rdquo; as custom food
+      </button>
+    );
+  }
+
+  return (
+    <div className="bg-gray-50 rounded-xl px-4 py-4 mt-2 space-y-3">
+      <div className="text-sm font-medium text-gray-600">Create Custom Food</div>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Food name"
+        className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+      />
+      <div className="flex gap-2">
+        <input
+          type="number"
+          inputMode="decimal"
+          value={calories}
+          onChange={(e) => setCalories(e.target.value)}
+          placeholder="Calories"
+          className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        <input
+          type="text"
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
+          placeholder="Unit (e.g. piece, bowl)"
+          className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setShow(false)}
+          className="flex-1 py-2.5 rounded-lg text-sm font-medium text-gray-500 bg-white border border-gray-200"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={create}
+          disabled={!name || !calories || creating}
+          className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white bg-primary active:bg-primary-dark disabled:opacity-50"
+        >
+          {creating ? "Creating..." : "Create"}
+        </button>
+      </div>
     </div>
   );
 }

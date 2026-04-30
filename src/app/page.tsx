@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatDate, formatDisplayDate, addDays } from "@/lib/date";
 import { fetchJSON } from "@/lib/api";
+import { UserMenu } from "@/components/UserMenu";
 
 interface Food {
   id: string;
@@ -44,29 +45,36 @@ function HomeInner() {
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [goal, setGoal] = useState(2000);
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     setDate(paramDate || formatDate(new Date()));
   }, [paramDate]);
 
-  const fetchData = useCallback(async (d: string) => {
-    setLoading(true);
+  const fetchData = useCallback(async (d: string, isInitial: boolean) => {
+    if (isInitial) {
+      setInitialLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     const [entriesData, settingsData, foodsData] = await Promise.all([
       fetchJSON<FoodEntry[]>(`/api/entries?date=${d}`),
       fetchJSON<Settings>("/api/settings"),
-      fetchJSON<Food[]>("/api/foods?q="),
+      fetchJSON<Food[]>("/api/foods?q=&limit=6"),
     ]);
     setEntries(entriesData);
     setGoal(settingsData.dailyCalorieGoal);
-    setRecentFoods(foodsData.slice(0, 6));
-    setLoading(false);
+    setRecentFoods(foodsData);
+    setInitialLoading(false);
+    setRefreshing(false);
   }, []);
 
   useEffect(() => {
     if (!date) return;
-    fetchData(date);
-  }, [date, fetchData]);
+    const isInitial = entries.length === 0;
+    fetchData(date, isInitial);
+  }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changeDate = (d: string) => {
     setDate(d);
@@ -89,24 +97,44 @@ function HomeInner() {
     .filter((g) => g.entries.length > 0);
 
   const deleteEntry = async (id: string) => {
-    await fetchJSON(`/api/entries/${id}`, { method: "DELETE" });
-    setEntries((prev) => prev.filter((e) => e.id !== id));
+    const prev = entries;
+    setEntries((p) => p.filter((e) => e.id !== id));
+    try {
+      await fetchJSON(`/api/entries/${id}`, { method: "DELETE" });
+    } catch {
+      setEntries(prev);
+    }
   };
 
   const quickAdd = async (food: Food) => {
     const servingSizes = JSON.parse(food.servingSizes || '[{"label":"1","multiplier":1}]');
     const defaultServing = servingSizes[0]?.multiplier || 1;
-    await fetchJSON("/api/entries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        foodId: food.id,
-        quantity: defaultServing,
-        mealType: "snack",
-        date,
-      }),
-    });
-    fetchData(date);
+    const optimisticId = `opt-${Date.now()}`;
+    const optimisticEntry: FoodEntry = {
+      id: optimisticId,
+      foodId: food.id,
+      food,
+      quantity: defaultServing,
+      mealType: "snack",
+      date,
+    };
+    setEntries((p) => [...p, optimisticEntry]);
+    try {
+      await fetchJSON("/api/entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          foodId: food.id,
+          quantity: defaultServing,
+          mealType: "snack",
+          date,
+        }),
+      });
+    } catch {
+      setEntries((p) => p.filter((e) => e.id !== optimisticId));
+    }
+    // Refresh quietly in background for correct data
+    fetchData(date, false);
   };
 
   if (!date) return null;
@@ -118,6 +146,7 @@ function HomeInner() {
     <div className="px-4 pt-6">
       {/* Date navigation */}
       <div className="flex items-center justify-between mb-6">
+        <UserMenu />
         <button
           onClick={() => changeDate(addDays(date, -1))}
           className="p-2 text-gray-400 hover:text-gray-600 active:scale-90 transition-transform"
@@ -139,10 +168,7 @@ function HomeInner() {
         </div>
         <button
           onClick={() => changeDate(addDays(date, 1))}
-          className={`p-2 active:scale-90 transition-transform ${
-            isToday ? "text-gray-200 pointer-events-none" : "text-gray-400 hover:text-gray-600"
-          }`}
-          disabled={isToday}
+          className="p-2 text-gray-400 hover:text-gray-600 active:scale-90 transition-transform"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
@@ -174,8 +200,13 @@ function HomeInner() {
       {/* Quick add recent foods */}
       {recentFoods.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-sm font-medium text-gray-500 mb-2">Quick Add</h2>
-          <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-medium text-gray-500">Quick Add</h2>
+            {refreshing && (
+              <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            )}
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1 quick-add-scroll">
             {recentFoods.map((food) => (
               <button
                 key={food.id}
@@ -190,8 +221,12 @@ function HomeInner() {
       )}
 
       {/* Entries grouped by meal */}
-      {loading ? (
-        <div className="text-center text-gray-400 py-8 animate-pulse">Loading...</div>
+      {initialLoading ? (
+        <div className="space-y-4 animate-pulse">
+          <div className="h-20 bg-gray-100 rounded-xl" />
+          <div className="h-20 bg-gray-100 rounded-xl" />
+          <div className="h-20 bg-gray-100 rounded-xl" />
+        </div>
       ) : groupedEntries.length === 0 ? (
         <div className="text-center text-gray-400 py-12">
           <p className="text-lg mb-1">No entries yet</p>
@@ -216,7 +251,9 @@ function HomeInner() {
                   {group.entries.map((entry) => (
                     <div
                       key={entry.id}
-                      className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 group"
+                      className={`flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 group ${
+                        entry.id.startsWith("opt-") ? "opacity-60" : ""
+                      }`}
                     >
                       <div>
                         <div className="font-medium">{entry.food.name}</div>
@@ -248,7 +285,7 @@ function HomeInner() {
 
 export default function Home() {
   return (
-    <Suspense fallback={<div className="px-4 pt-6 text-center text-gray-400 py-8">Loading...</div>}>
+    <Suspense fallback={<div className="space-y-4 animate-pulse px-4 pt-6"><div className="h-20 bg-gray-100 rounded-xl" /><div className="h-20 bg-gray-100 rounded-xl" /></div>}>
       <HomeInner />
     </Suspense>
   );
