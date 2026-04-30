@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Food {
+  id              String      @id @default(cuid())
+  name            String      @unique
+  category        String      // breakfast, curry, rice, bread, snack, drink, fruit, etc.
+  region          String      // south_indian, north_indian, general
+  caloriesPerUnit Float
+  unitName        String      // "piece", "bowl", "cup", "serving", etc.
+  servingSizes    String      // JSON string: [{"label":"1 piece","multiplier":1},...]
+  isCommon        Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  entries         FoodEntry[]
+}
+
+model FoodEntry {
+  id        String   @id @default(cuid())
+  foodId    String
+  food      Food     @relation(fields: [foodId], references: [id])
+  quantity  Float
+  mealType  String   // breakfast, lunch, dinner, snack
+  date      String   // "YYYY-MM-DD"
+  createdAt DateTime @default(now())
+}
+
+model Settings {
+  id               String @id @default("default")
+  dailyCalorieGoal Int    @default(2000)
+}
+
+model WeightEntry {
+  id        String   @id @default(cuid())
+  weight    Float
+  date      String   @unique
+  createdAt DateTime @default(now())
+}
